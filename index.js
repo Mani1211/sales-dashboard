@@ -89,7 +89,7 @@ function aggregateBookings(bookings) {
 async function handleLeaderboard(db, payload) {
   console.log("handleLeaderboard called with payload: " + JSON.stringify(payload));
   try {
-      const { branch, year, quarter, monthFrom, monthTo, targetYear } = payload;
+      const { branch, year, quarter, monthFrom, monthTo, targetYear, accesskey } = payload;
 
   const empQuery = [
     Query.select(["name", "$id", "targets"]),
@@ -110,20 +110,12 @@ async function handleLeaderboard(db, payload) {
   const names = employees.map((e) => e.name);
 
   const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
-    Query.greaterThanEqual("bookMonth", monthFrom),
-    Query.lessThanEqual("bookMonth", monthTo),
-    Query.equal("bookYear", year),
+    Query.greaterThanEqual(accesskey ==='booked' ? "bookMonth" : 'travelMonth', monthFrom),
+    Query.lessThanEqual(accesskey ==='booked' ? "bookMonth" : 'travelMonth', monthTo),
+    Query.equal(accesskey === 'booked' ? "bookYear" : "travelYear", year),
     Query.equal("bookingCancelled", false),
     Query.equal("salesHandleName", names),
-    Query.select(["salesHandleName", "finalMargin", "bookingValue"]),
-
-      // Query.limit(2000),
-      //   Query.greaterThanEqual("bookMonth", 1),
-      //   Query.lessThanEqual("bookMonth", 3),
-      //   Query.equal("bookingCancelled", false),
-      //   Query.equal("bookYear", 2026),
-      //   Query.select(["bookingID", "salesHandleName", "finalMargin", "bookingValue", "$id"]),
-      //   Query.equal("salesHandleName", salespeoples),
+    Query.select(["bookingID", "bookingValue", "finalMargin", "bookMonth", "bookingCancelled"]),
   ]);
 
   const map = aggregateBookings(bookings);
@@ -163,125 +155,11 @@ async function handleLeaderboard(db, payload) {
   }
 }
 
-// ─── Handler: Branch Summary ──────────────────────────────────────────────────
-
-/**
- * payload: { year: number, quarter: string, monthFrom: number, monthTo: number }
- * returns: { branches: BranchSummary[] }
- * Use case: A branch-level overview card / comparison table
- */
-async function handleBranchSummary(db, payload) {
-  const { year, monthFrom, monthTo } = payload;
-
-  const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
-    Query.greaterThanEqual("bookMonth", monthFrom),
-    Query.lessThanEqual("bookMonth", monthTo),
-    Query.equal("bookYear", year),
-    Query.equal("bookingCancelled", false),
-    Query.select(["branch", "finalMargin", "bookingValue", "salesHandleName"]),
-  ]);
-
-  const branchMap = {};
-  bookings.forEach(({ branch, bookingValue, finalMargin, salesHandleName }) => {
-    const value = parseInt(bookingValue) || 0;
-    const margin = parseInt(finalMargin) || 0;
-
-    if (!branchMap[branch]) {
-      branchMap[branch] = {
-        branch,
-        totalRevenue: 0,
-        totalMargin: 0,
-        totalBookings: 0,
-        uniqueConsultants: new Set(),
-      };
-    }
-
-    branchMap[branch].totalRevenue += value;
-    branchMap[branch].totalMargin += margin;
-    branchMap[branch].totalBookings += 1;
-    branchMap[branch].uniqueConsultants.add(salesHandleName);
-  });
-
-  // Serialize Set before returning
-  const branches = Object.values(branchMap).map((b) => ({
-    ...b,
-    consultantCount: b.uniqueConsultants.size,
-    uniqueConsultants: undefined, // strip the Set
-  }));
-
-  return { branches: branches.sort((a, b) => b.totalRevenue - a.totalRevenue) };
-}
-
-// ─── Handler: Consultant Detail ───────────────────────────────────────────────
-
-/**
- * payload: { consultantName: string, year: number, quarter: string,
- *            monthFrom: number, monthTo: number }
- * returns: { profile, monthlyBreakdown, recentBookings }
- * Use case: Clicking into a specific consultant's performance page
- */
-async function handleConsultantDetail(db, payload) {
-  const { consultantName, year, quarter, monthFrom, monthTo, targetYear } = payload;
-
-  const employees = await fetchAllDocuments(db, EMPLOYEES_COL, [
-    Query.equal("name", consultantName),
-    Query.select(["name", "$id", "targets", "branch", "designation"]),
-  ]);
-
-  const employee = employees[0] ?? null;
-  const target = employee ? parseTargets(employee, targetYear, quarter) : null;
-
-  const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
-    Query.greaterThanEqual("bookMonth", monthFrom),
-    Query.lessThanEqual("bookMonth", monthTo),
-    Query.equal("bookYear", year),
-    Query.equal("bookingCancelled", false),
-    Query.equal("salesHandleName", consultantName),
-    Query.select(["bookingID", "bookingValue", "finalMargin", "bookMonth", "bookingCancelled"]),
-  ]);
-
-  // Month-by-month breakdown
-  const monthlyMap = {};
-  bookings.forEach(({ bookingValue, finalMargin, bookMonth }) => {
-    const value = parseInt(bookingValue) || 0;
-    const margin = parseInt(finalMargin) || 0;
-    if (!monthlyMap[bookMonth]) {
-      monthlyMap[bookMonth] = { month: bookMonth, revenue: 0, margin: 0, bookings: 0 };
-    }
-    monthlyMap[bookMonth].revenue += value;
-    monthlyMap[bookMonth].margin += margin;
-    monthlyMap[bookMonth].bookings += 1;
-  });
-
-  const totalRevenue = bookings.reduce((s, b) => s + (parseInt(b.bookingValue) || 0), 0);
-  const totalMargin = bookings.reduce((s, b) => s + (parseInt(b.finalMargin) || 0), 0);
-  const totalBookings = bookings.length;
-
-  return {
-    profile: {
-      name: employee?.name,
-      branch: employee?.branch,
-      designation: employee?.designation,
-      target,
-    },
-    summary: {
-      totalRevenue,
-      totalMargin,
-      totalBookings,
-      bookingPercentage: Math.round((totalBookings / (target?.totalBookings || 1)) * 100),
-      marginPercentage: Math.round((totalMargin / (target?.margin || 1)) * 100),
-    },
-    monthlyBreakdown: Object.values(monthlyMap).sort((a, b) => a.month - b.month),
-    recentBookings: bookings.slice(-10).reverse(), // last 10
-  };
-}
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const HANDLERS = {
   leaderboard: handleLeaderboard,
-  branch_summary: handleBranchSummary,
-  consultant_detail: handleConsultantDetail,
   // Register new pages here as you build them
 };
 
@@ -345,7 +223,7 @@ export default async ({ req, res, log, error }) => {
 
 
 // const result = await start({type:'leaderboard', payload:{
-//    branch: "", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3, targetYear:'2025'
+//    branch: "", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3, targetYear:'2025',accesskey:'travel'
 // }})
 
 
