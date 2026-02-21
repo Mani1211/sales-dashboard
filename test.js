@@ -1,0 +1,283 @@
+// functions/analytics/src/main.js
+import { Client, Databases, Query } from "node-appwrite";
+
+// ─── Shared constants ────────────────────────────────────────────────────────
+
+const DESIGNATIONS = [
+  "Senior Travel Consultant",
+  "Travel Consultant",
+  "Junior Travel Consultant",
+  "Branch Head",
+  "Branch Director",
+  "CEO",
+];
+
+const DB_ID = process.env.DB_ID;
+const EMPLOYEES_COL = process.env.EMPLOYEES_COLLECTION_ID;
+const BOOKINGS_COL = process.env.BOOKINGS_COLLECTION_ID;
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Paginate through all documents when result count may exceed Appwrite's
+ * per-request limit. Returns a flat array of all documents.
+ */
+async function fetchAllDocuments(db, collectionId, queries, pageLimit = 500) {
+  let all = [];
+  let cursor = null;
+
+  while (true) {
+    const q = [...queries, Query.limit(pageLimit)];
+    if (cursor) q.push(Query.cursorAfter(cursor));
+
+    const { documents } = await db.listDocuments(DB_ID, collectionId, q);
+    all = all.concat(documents);
+
+    if (documents.length < pageLimit) break; // last page
+    cursor = documents[documents.length - 1].$id;
+  }
+
+  return all;
+}
+
+/** Parse target JSON strings stored on employee documents */
+function parseTargets(employee, year, quarter) {
+  const raw = employee.targets?.find((t) => {
+    const p = JSON.parse(t);
+    return p.year === String(year) && p.quarter === quarter;
+  });
+  return raw ? JSON.parse(raw) : null;
+}
+
+/** Aggregate raw booking documents into a consultant-keyed map */
+function aggregateBookings(bookings) {
+  const map = {};
+  bookings.forEach(({ salesHandleName, bookingValue, finalMargin }) => {
+    const value = parseInt(bookingValue) || 0;
+    const margin = parseInt(finalMargin) || 0;
+
+    if (map[salesHandleName]) {
+      map[salesHandleName].revenue += value;
+      map[salesHandleName].bookingAchieved += 1;
+      map[salesHandleName].marginAchieved += margin;
+    } else {
+      map[salesHandleName] = {
+        name: salesHandleName,
+        revenue: value,
+        bookingAchieved: 1,
+        marginAchieved: margin,
+      };
+    }
+  });
+  return map;
+}
+
+// ─── Handler: Leaderboard ─────────────────────────────────────────────────────
+
+/**
+ * payload: { branch?: string, year: number, quarter: string,
+ *            monthFrom: number, monthTo: number }
+ * returns: { byBookings: ConsultantMetric[], byMargin: ConsultantMetric[] }
+ */
+async function handleLeaderboard(db, payload) {
+  const { branch, year, quarter, monthFrom, monthTo } = payload;
+
+  const empQuery = [
+    Query.select(["name", "$id", "targets"]),
+    Query.contains("designation", DESIGNATIONS),
+  ];
+  if (branch) empQuery.push(Query.equal("branch", branch));
+
+  const employees = await fetchAllDocuments(db, EMPLOYEES_COL, empQuery);
+
+  const targetMap = {};
+  employees.forEach((emp) => {
+    const target = parseTargets(emp, year, quarter);
+    if (target) targetMap[emp.name] = target;
+  });
+
+  const names = employees.map((e) => e.name);
+
+  const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
+    Query.greaterThanEqual("bookMonth", monthFrom),
+    Query.lessThanEqual("bookMonth", monthTo),
+    Query.equal("bookYear", year),
+    Query.equal("bookingCancelled", false),
+    Query.equal("salesHandleName", names),
+    Query.select(["salesHandleName", "finalMargin", "bookingValue"]),
+  ]);
+
+  const map = aggregateBookings(bookings);
+
+  const result = Object.values(map).map((item) => {
+    const target = targetMap[item.name];
+    const bookingPercentage = Math.round(
+      (item.bookingAchieved / (target?.totalBookings || 1)) * 100,
+    );
+    const marginPercentage = Math.round(
+      (item.marginAchieved / (target?.margin || 1)) * 100,
+    );
+    return {
+      ...item,
+      bookingTarget: target?.totalBookings ?? null,
+      marginTarget: target?.margin ?? null,
+      bookingPercentage,
+      marginPercentage,
+      isBookingExceeded: bookingPercentage > 100,
+      isMarginExceeded: marginPercentage > 100,
+    };
+  });
+
+  return {
+    byBookings: [...result].sort((a, b) => b.bookingAchieved - a.bookingAchieved),
+    byMargin: [...result].sort((a, b) => b.marginAchieved - a.marginAchieved),
+  };
+}
+
+// ─── Handler: Branch Summary ──────────────────────────────────────────────────
+
+/**
+ * payload: { year: number, quarter: string, monthFrom: number, monthTo: number }
+ * returns: { branches: BranchSummary[] }
+ * Use case: A branch-level overview card / comparison table
+ */
+async function handleBranchSummary(db, payload) {
+  const { year, monthFrom, monthTo } = payload;
+
+  const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
+    Query.greaterThanEqual("bookMonth", monthFrom),
+    Query.lessThanEqual("bookMonth", monthTo),
+    Query.equal("bookYear", year),
+    Query.equal("bookingCancelled", false),
+    Query.select(["branch", "finalMargin", "bookingValue", "salesHandleName"]),
+  ]);
+
+  const branchMap = {};
+  bookings.forEach(({ branch, bookingValue, finalMargin, salesHandleName }) => {
+    const value = parseInt(bookingValue) || 0;
+    const margin = parseInt(finalMargin) || 0;
+
+    if (!branchMap[branch]) {
+      branchMap[branch] = {
+        branch,
+        totalRevenue: 0,
+        totalMargin: 0,
+        totalBookings: 0,
+        uniqueConsultants: new Set(),
+      };
+    }
+
+    branchMap[branch].totalRevenue += value;
+    branchMap[branch].totalMargin += margin;
+    branchMap[branch].totalBookings += 1;
+    branchMap[branch].uniqueConsultants.add(salesHandleName);
+  });
+
+  // Serialize Set before returning
+  const branches = Object.values(branchMap).map((b) => ({
+    ...b,
+    consultantCount: b.uniqueConsultants.size,
+    uniqueConsultants: undefined, // strip the Set
+  }));
+
+  return { branches: branches.sort((a, b) => b.totalRevenue - a.totalRevenue) };
+}
+
+// ─── Handler: Consultant Detail ───────────────────────────────────────────────
+
+/**
+ * payload: { consultantName: string, year: number, quarter: string,
+ *            monthFrom: number, monthTo: number }
+ * returns: { profile, monthlyBreakdown, recentBookings }
+ * Use case: Clicking into a specific consultant's performance page
+ */
+async function handleConsultantDetail(db, payload) {
+  const { consultantName, year, quarter, monthFrom, monthTo } = payload;
+
+  const employees = await fetchAllDocuments(db, EMPLOYEES_COL, [
+    Query.equal("name", consultantName),
+    Query.select(["name", "$id", "targets", "branch", "designation"]),
+  ]);
+
+  const employee = employees[0] ?? null;
+  const target = employee ? parseTargets(employee, year, quarter) : null;
+
+  const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
+    Query.greaterThanEqual("bookMonth", monthFrom),
+    Query.lessThanEqual("bookMonth", monthTo),
+    Query.equal("bookYear", year),
+    Query.equal("bookingCancelled", false),
+    Query.equal("salesHandleName", consultantName),
+    Query.select(["bookingID", "bookingValue", "finalMargin", "bookMonth", "bookingCancelled"]),
+  ]);
+
+  // Month-by-month breakdown
+  const monthlyMap = {};
+  bookings.forEach(({ bookingValue, finalMargin, bookMonth }) => {
+    const value = parseInt(bookingValue) || 0;
+    const margin = parseInt(finalMargin) || 0;
+    if (!monthlyMap[bookMonth]) {
+      monthlyMap[bookMonth] = { month: bookMonth, revenue: 0, margin: 0, bookings: 0 };
+    }
+    monthlyMap[bookMonth].revenue += value;
+    monthlyMap[bookMonth].margin += margin;
+    monthlyMap[bookMonth].bookings += 1;
+  });
+
+  const totalRevenue = bookings.reduce((s, b) => s + (parseInt(b.bookingValue) || 0), 0);
+  const totalMargin = bookings.reduce((s, b) => s + (parseInt(b.finalMargin) || 0), 0);
+  const totalBookings = bookings.length;
+
+  return {
+    profile: {
+      name: employee?.name,
+      branch: employee?.branch,
+      designation: employee?.designation,
+      target,
+    },
+    summary: {
+      totalRevenue,
+      totalMargin,
+      totalBookings,
+      bookingPercentage: Math.round((totalBookings / (target?.totalBookings || 1)) * 100),
+      marginPercentage: Math.round((totalMargin / (target?.margin || 1)) * 100),
+    },
+    monthlyBreakdown: Object.values(monthlyMap).sort((a, b) => a.month - b.month),
+    recentBookings: bookings.slice(-10).reverse(), // last 10
+  };
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+
+const HANDLERS = {
+  leaderboard: handleLeaderboard,
+  branch_summary: handleBranchSummary,
+  consultant_detail: handleConsultantDetail,
+  // Register new pages here as you build them
+};
+
+// ─── Entry point ──────────────────────────────────────────────────────────────
+
+export default async ({ req, res, log, error }) => {
+  const { type, payload } = req.body;
+
+  if (!type || !HANDLERS[type]) {
+    return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
+  }
+
+  const client = new Client()
+    .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT)
+    .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
+    .setKey(process.env.APPWRITE_API_KEY);
+
+  const db = new Databases(client);
+
+  try {
+    log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+    const data = await HANDLERS[type](db, payload);
+    return res.json({ success: true, data });
+  } catch (err) {
+    error(`[analytics] type=${type} failed: ${err.message}`);
+    return res.json({ success: false, error: err.message }, 500);
+  }
+};
