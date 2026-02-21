@@ -1,5 +1,5 @@
 {
-  "name": "appwrite-s3-cdn",
+  "name": "sales-dashboard",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -11,7 +11,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.896.0",
     "dotenv": "^17.2.2",
     "node-appwrite": "^18.0.0"
   }
