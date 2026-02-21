@@ -24,7 +24,7 @@ const BOOKINGS_COL = process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID;
  * Paginate through all documents when result count may exceed Appwrite's
  * per-request limit. Returns a flat array of all documents.
  */
-async function fetchAllDocuments(db, collectionId, queries, pageLimit = 500) {
+async function fetchAllDocuments(db, collectionId, queries, pageLimit = 2000) {
   let all = [];
   let cursor = null;
 
@@ -32,7 +32,8 @@ async function fetchAllDocuments(db, collectionId, queries, pageLimit = 500) {
     const q = [...queries, Query.limit(pageLimit)];
     if (cursor) q.push(Query.cursorAfter(cursor));
 
-    const { documents } = await db.listDocuments(DB_ID, collectionId, q);
+    const { documents, total } = await db.listDocuments(DB_ID, collectionId, q);
+    console.log('total', total)
     all = all.concat(documents);
 
     if (documents.length < pageLimit) break; // last page
@@ -44,16 +45,20 @@ async function fetchAllDocuments(db, collectionId, queries, pageLimit = 500) {
 
 /** Parse target JSON strings stored on employee documents */
 function parseTargets(employee, year, quarter) {
+  // console.log('employee, year, quarter', employee.name, year, quarter)
+
   const raw = employee.targets?.find((t) => {
     const p = JSON.parse(t);
     return p.year === String(year) && p.quarter === quarter;
   });
+  // console.log('raw', raw)
   return raw ? JSON.parse(raw) : null;
 }
 
 /** Aggregate raw booking documents into a consultant-keyed map */
 function aggregateBookings(bookings) {
   const map = {};
+  console.log('bookings', bookings.length)
   bookings.forEach(({ salesHandleName, bookingValue, finalMargin }) => {
     const value = parseInt(bookingValue) || 0;
     const margin = parseInt(finalMargin) || 0;
@@ -84,7 +89,7 @@ function aggregateBookings(bookings) {
 async function handleLeaderboard(db, payload) {
   console.log("handleLeaderboard called with payload: " + JSON.stringify(payload));
   try {
-      const { branch, year, quarter, monthFrom, monthTo } = payload;
+      const { branch, year, quarter, monthFrom, monthTo, targetYear } = payload;
 
   const empQuery = [
     Query.select(["name", "$id", "targets"]),
@@ -97,11 +102,11 @@ async function handleLeaderboard(db, payload) {
 
   const targetMap = {};
   employees.forEach((emp) => {
-    const target = parseTargets(emp, year, quarter);
+    const target = parseTargets(emp, targetYear, quarter);
     if (target) targetMap[emp.name] = target;
   });
 
-   console.log("Target map: " + JSON.stringify(targetMap, null, 2));
+  //  console.log("Target map: " + JSON.stringify(targetMap, null, 2));
   const names = employees.map((e) => e.name);
 
   const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
@@ -111,6 +116,14 @@ async function handleLeaderboard(db, payload) {
     Query.equal("bookingCancelled", false),
     Query.equal("salesHandleName", names),
     Query.select(["salesHandleName", "finalMargin", "bookingValue"]),
+
+      // Query.limit(2000),
+      //   Query.greaterThanEqual("bookMonth", 1),
+      //   Query.lessThanEqual("bookMonth", 3),
+      //   Query.equal("bookingCancelled", false),
+      //   Query.equal("bookYear", 2026),
+      //   Query.select(["bookingID", "salesHandleName", "finalMargin", "bookingValue", "$id"]),
+      //   Query.equal("salesHandleName", salespeoples),
   ]);
 
   const map = aggregateBookings(bookings);
@@ -134,7 +147,7 @@ async function handleLeaderboard(db, payload) {
     };
   });
 
-   console.log("Result: " + JSON.stringify(result, null, 2));
+  //  console.log("Result: " + JSON.stringify(result, null, 2));
 
   return {
     byBookings: [...result].sort((a, b) => b.bookingAchieved - a.bookingAchieved),
@@ -208,7 +221,7 @@ async function handleBranchSummary(db, payload) {
  * Use case: Clicking into a specific consultant's performance page
  */
 async function handleConsultantDetail(db, payload) {
-  const { consultantName, year, quarter, monthFrom, monthTo } = payload;
+  const { consultantName, year, quarter, monthFrom, monthTo, targetYear } = payload;
 
   const employees = await fetchAllDocuments(db, EMPLOYEES_COL, [
     Query.equal("name", consultantName),
@@ -216,7 +229,7 @@ async function handleConsultantDetail(db, payload) {
   ]);
 
   const employee = employees[0] ?? null;
-  const target = employee ? parseTargets(employee, year, quarter) : null;
+  const target = employee ? parseTargets(employee, targetYear, quarter) : null;
 
   const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
     Query.greaterThanEqual("bookMonth", monthFrom),
@@ -274,40 +287,17 @@ const HANDLERS = {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export default async ({ req, res, log, error }) => {
-   log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
-  log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
-  log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
-  log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
-  log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
-  log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
-  const { type, payload } = req.body;
-
-  if (!type || !HANDLERS[type]) {
-    return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
-  }
-
-  const client = new Client()
-    .setEndpoint(process.env.VITE_APPWRITE_URL)
-    .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
-    .setKey(process.env.API_KEY);
-
-  const db = new Databases(client);
-
-  try {
-    log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
-    const data = await HANDLERS[type](db, payload);
-    return res.json({ success: true, data });
-  } catch (err) {
-    error(`[analytics] type=${type} failed: ${err.message}`);
-    return res.json({ success: false, error: err.message }, 500);
-  }
-};
-// const start = async (body) => {
-//   const { type, payload } = body;
+// export default async ({ req, res, log, error }) => {
+//    log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
+//   log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
+//   log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
+//   log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
+//   log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
+//   log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
+//   const { type, payload } = req.body;
 
 //   if (!type || !HANDLERS[type]) {
-//     return { error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` };
+//     return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
 //   }
 
 //   const client = new Client()
@@ -318,20 +308,43 @@ export default async ({ req, res, log, error }) => {
 //   const db = new Databases(client);
 
 //   try {
-//     console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+//     log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
 //     const data = await HANDLERS[type](db, payload);
-//     return { success: true, data };
+//     return res.json({ success: true, data });
 //   } catch (err) {
-//     console.log(`[analytics] type=${type} failed: ${err.message}`);
-//     return { success: false, error: err.message };
+//     error(`[analytics] type=${type} failed: ${err.message}`);
+//     return res.json({ success: false, error: err.message }, 500);
 //   }
 // };
+const start = async (body) => {
+  const { type, payload } = body;
+
+  if (!type || !HANDLERS[type]) {
+    return { error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` };
+  }
+
+  const client = new Client()
+    .setEndpoint(process.env.VITE_APPWRITE_URL)
+    .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
+    .setKey(process.env.API_KEY);
+
+  const db = new Databases(client);
+
+  try {
+    console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+    const data = await HANDLERS[type](db, payload);
+    return { success: true, data };
+  } catch (err) {
+    console.log(`[analytics] type=${type} failed: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+};
 
 
-// const result = await start({type:'leaderboard', payload:{
-//    branch: "Chennai", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3
-// }})
+const result = await start({type:'leaderboard', payload:{
+   branch: "", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3, targetYear:'2025'
+}})
 
 
-// console.log('result', result)
+console.log('result', result)
 
