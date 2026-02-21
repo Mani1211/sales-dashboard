@@ -295,6 +295,7 @@ export default async ({ req, res, log, error }) => {
   log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
   log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
   const { type, payload } = req.body;
+  log("Received request:", { type, payload });
 
   if (!type || !HANDLERS[type]) {
     return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
