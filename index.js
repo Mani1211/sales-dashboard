@@ -263,7 +263,7 @@ const HANDLERS = {
 export default async ({ req, res, log, error }) => {
    log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
   log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
-  log("KEY SET:  " + !!process.env.APPWRITE_API_KEY); // logs true/false, never logs the key itself
+  log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
   log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
   log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
   log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
@@ -276,7 +276,7 @@ export default async ({ req, res, log, error }) => {
   const client = new Client()
     .setEndpoint(process.env.VITE_APPWRITE_URL)
     .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
-    .setKey(process.env.APPWRITE_API_KEY);
+    .setKey(process.env.API_KEY);
 
   const db = new Databases(client);
 
