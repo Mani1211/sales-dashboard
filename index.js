@@ -287,40 +287,17 @@ const HANDLERS = {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-// export default async ({ req, res, log, error }) => {
-//    log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
-//   log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
-//   log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
-//   log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
-//   log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
-//   log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
-//   const { type, payload } = req.body;
-
-//   if (!type || !HANDLERS[type]) {
-//     return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
-//   }
-
-//   const client = new Client()
-//     .setEndpoint(process.env.VITE_APPWRITE_URL)
-//     .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
-//     .setKey(process.env.API_KEY);
-
-//   const db = new Databases(client);
-
-//   try {
-//     log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
-//     const data = await HANDLERS[type](db, payload);
-//     return res.json({ success: true, data });
-//   } catch (err) {
-//     error(`[analytics] type=${type} failed: ${err.message}`);
-//     return res.json({ success: false, error: err.message }, 500);
-//   }
-// };
-const start = async (body) => {
-  const { type, payload } = body;
+export default async ({ req, res, log, error }) => {
+   log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
+  log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
+  log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
+  log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
+  log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
+  log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
+  const { type, payload } = req.body;
 
   if (!type || !HANDLERS[type]) {
-    return { error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` };
+    return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
   }
 
   const client = new Client()
@@ -331,20 +308,45 @@ const start = async (body) => {
   const db = new Databases(client);
 
   try {
-    console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+    log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
     const data = await HANDLERS[type](db, payload);
-    return { success: true, data };
+    return res.json({ success: true, data });
   } catch (err) {
-    console.log(`[analytics] type=${type} failed: ${err.message}`);
-    return { success: false, error: err.message };
+    error(`[analytics] type=${type} failed: ${err.message}`);
+    return res.json({ success: false, error: err.message }, 500);
   }
 };
 
 
-const result = await start({type:'leaderboard', payload:{
-   branch: "", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3, targetYear:'2025'
-}})
+// const start = async (body) => {
+//   const { type, payload } = body;
+
+//   if (!type || !HANDLERS[type]) {
+//     return { error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` };
+//   }
+
+//   const client = new Client()
+//     .setEndpoint(process.env.VITE_APPWRITE_URL)
+//     .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
+//     .setKey(process.env.API_KEY);
+
+//   const db = new Databases(client);
+
+//   try {
+//     console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+//     const data = await HANDLERS[type](db, payload);
+//     return { success: true, data };
+//   } catch (err) {
+//     console.log(`[analytics] type=${type} failed: ${err.message}`);
+//     return { success: false, error: err.message };
+//   }
+// };
 
 
-console.log('result', result)
+// const result = await start({type:'leaderboard', payload:{
+//    branch: "", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3, targetYear:'2025'
+// }})
+
+
+// console.log('result', result)
 
