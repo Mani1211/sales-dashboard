@@ -82,6 +82,7 @@ function aggregateBookings(bookings) {
  * returns: { byBookings: ConsultantMetric[], byMargin: ConsultantMetric[] }
  */
 async function handleLeaderboard(db, payload) {
+  log("handleLeaderboard called with payload: " + JSON.stringify(payload));
   try {
       const { branch, year, quarter, monthFrom, monthTo } = payload;
 
