@@ -82,7 +82,8 @@ function aggregateBookings(bookings) {
  * returns: { byBookings: ConsultantMetric[], byMargin: ConsultantMetric[] }
  */
 async function handleLeaderboard(db, payload) {
-  const { branch, year, quarter, monthFrom, monthTo } = payload;
+  try {
+      const { branch, year, quarter, monthFrom, monthTo } = payload;
 
   const empQuery = [
     Query.select(["name", "$id", "targets"]),
@@ -91,6 +92,7 @@ async function handleLeaderboard(db, payload) {
   if (branch) empQuery.push(Query.equal("branch", branch));
 
   const employees = await fetchAllDocuments(db, EMPLOYEES_COL, empQuery);
+  log("Found employees: " + employees);
 
   const targetMap = {};
   employees.forEach((emp) => {
@@ -98,6 +100,7 @@ async function handleLeaderboard(db, payload) {
     if (target) targetMap[emp.name] = target;
   });
 
+  log("Target map: " + JSON.stringify(targetMap, null, 2));
   const names = employees.map((e) => e.name);
 
   const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
@@ -130,10 +133,20 @@ async function handleLeaderboard(db, payload) {
     };
   });
 
+  log("Result: " + JSON.stringify(result, null, 2));
+
   return {
     byBookings: [...result].sort((a, b) => b.bookingAchieved - a.bookingAchieved),
     byMargin: [...result].sort((a, b) => b.marginAchieved - a.marginAchieved),
   };
+  } catch (error) {
+    log("Error in handleLeaderboard: " + error);
+     return {
+      error:true,
+    byBookings: [],
+    byMargin: []  ,
+  };
+  }
 }
 
 // ─── Handler: Branch Summary ──────────────────────────────────────────────────
