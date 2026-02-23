@@ -33,7 +33,7 @@ async function fetchAllDocuments(db, collectionId, queries, pageLimit = 2000) {
     if (cursor) q.push(Query.cursorAfter(cursor));
 
     const { documents, total } = await db.listDocuments(DB_ID, collectionId, q);
-    console.log('total', total)
+    console.log("total", total);
     all = all.concat(documents);
 
     if (documents.length < pageLimit) break; // last page
@@ -58,7 +58,7 @@ function parseTargets(employee, year, quarter) {
 /** Aggregate raw booking documents into a consultant-keyed map */
 function aggregateBookings(bookings) {
   const map = {};
-  console.log('bookings', bookings.length)
+  console.log("bookings", bookings.length);
   bookings.forEach(({ salesHandleName, bookingValue, finalMargin }) => {
     const value = parseInt(bookingValue) || 0;
     const margin = parseInt(finalMargin) || 0;
@@ -87,80 +87,243 @@ function aggregateBookings(bookings) {
  * returns: { byBookings: ConsultantMetric[], byMargin: ConsultantMetric[] }
  */
 async function handleLeaderboard(db, payload) {
-  console.log("handleLeaderboard called with payload: " + JSON.stringify(payload));
+  console.log(
+    "handleLeaderboard called with payload: " + JSON.stringify(payload),
+  );
   try {
-      const { branch, year, quarter, monthFrom, monthTo, targetYear, accesskey } = payload;
+    const { branch, year, quarter, monthFrom, monthTo, targetYear, accesskey } =
+      payload;
 
-  const empQuery = [
-    Query.select(["name", "$id", "targets"]),
-    Query.contains("designation", DESIGNATIONS),
-  ];
-  if (branch) empQuery.push(Query.equal("branch", branch));
+    const empQuery = [
+      Query.select(["name", "$id", "targets"]),
+      Query.contains("designation", DESIGNATIONS),
+    ];
+    if (branch) empQuery.push(Query.equal("branch", branch));
 
-  const employees = await fetchAllDocuments(db, EMPLOYEES_COL, empQuery);
-   console.log("Found employees: " + employees);
+    const employees = await fetchAllDocuments(db, EMPLOYEES_COL, empQuery);
+    console.log("Found employees: " + employees);
 
-  const targetMap = {};
-  employees.forEach((emp) => {
-    const target = parseTargets(emp, targetYear, quarter);
-    if (target) targetMap[emp.name] = target;
-  });
+    const targetMap = {};
+    employees.forEach((emp) => {
+      const target = parseTargets(emp, targetYear, quarter);
+      if (target) targetMap[emp.name] = target;
+    });
 
-  //  console.log("Target map: " + JSON.stringify(targetMap, null, 2));
-  const names = employees.map((e) => e.name);
+    //  console.log("Target map: " + JSON.stringify(targetMap, null, 2));
+    const names = employees.map((e) => e.name);
 
-  const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
-    Query.greaterThanEqual(accesskey ==='booked' ? "bookMonth" : 'travelMonth', monthFrom),
-    Query.lessThanEqual(accesskey ==='booked' ? "bookMonth" : 'travelMonth', monthTo),
-    Query.equal(accesskey === 'booked' ? "bookYear" : "travelYear", year),
-    Query.equal("bookingCancelled", false),
-    Query.equal("salesHandleName", names),
-    Query.select(["bookingID", "bookingValue", "finalMargin", "bookMonth", "bookingCancelled", 'salesHandleName']),
-  ]);
+    const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
+      Query.greaterThanEqual(
+        accesskey === "booked" ? "bookMonth" : "travelMonth",
+        monthFrom,
+      ),
+      Query.lessThanEqual(
+        accesskey === "booked" ? "bookMonth" : "travelMonth",
+        monthTo,
+      ),
+      Query.equal(accesskey === "booked" ? "bookYear" : "travelYear", year),
+      Query.equal("bookingCancelled", false),
+      Query.equal("salesHandleName", names),
+      Query.select([
+        "bookingID",
+        "bookingValue",
+        "finalMargin",
+        "bookMonth",
+        "bookingCancelled",
+        "salesHandleName",
+      ]),
+    ]);
 
-  const map = aggregateBookings(bookings);
-  console.log('map', map)
+    const map = aggregateBookings(bookings);
+    console.log("map", map);
 
-  const result = Object.values(map).map((item) => {
-    const target = targetMap[item.name];
-    const bookingPercentage = Math.round(
-      (item.bookingAchieved / (target?.totalBookings || 1)) * 100,
-    );
-    const marginPercentage = Math.round(
-      (item.marginAchieved / (target?.margin || 1)) * 100,
-    );
+    const result = Object.values(map).map((item) => {
+      const target = targetMap[item.name];
+      const bookingPercentage = Math.round(
+        (item.bookingAchieved / (target?.totalBookings || 1)) * 100,
+      );
+      const marginPercentage = Math.round(
+        (item.marginAchieved / (target?.margin || 1)) * 100,
+      );
+      return {
+        ...item,
+        bookingTarget: target?.totalBookings ?? null,
+        marginTarget: target?.margin ?? null,
+        bookingPercentage,
+        marginPercentage,
+        isBookingExceeded: bookingPercentage > 100,
+        isMarginExceeded: marginPercentage > 100,
+      };
+    });
+
+    //  console.log("Result: " + JSON.stringify(result, null, 2));
+
     return {
-      ...item,
-      bookingTarget: target?.totalBookings ?? null,
-      marginTarget: target?.margin ?? null,
-      bookingPercentage,
-      marginPercentage,
-      isBookingExceeded: bookingPercentage > 100,
-      isMarginExceeded: marginPercentage > 100,
+      byBookings: [...result].sort(
+        (a, b) => b.bookingAchieved - a.bookingAchieved,
+      ),
+      byMargin: [...result].sort((a, b) => b.marginAchieved - a.marginAchieved),
     };
-  });
-
-  //  console.log("Result: " + JSON.stringify(result, null, 2));
-
-  return {
-    byBookings: [...result].sort((a, b) => b.bookingAchieved - a.bookingAchieved),
-    byMargin: [...result].sort((a, b) => b.marginAchieved - a.marginAchieved),
-  };
   } catch (error) {
-     console.log("Error in handleLeaderboard: " + error);
-     return {
-      error:true,
-    byBookings: [],
-    byMargin: []  ,
-  };
+    console.log("Error in handleLeaderboard: " + error);
+    return {
+      error: true,
+      byBookings: [],
+      byMargin: [],
+    };
   }
 }
+async function handleCountryWise(db, payload) {
+  try {
+    const {
+      branch,
+      startDate,
+      endDate,
+    } = payload;
 
+    const empQuery = [
+      Query.select(["name", "$id"]),
+      Query.contains("designation", DESIGNATIONS),
+    ];
+    if (branch) empQuery.push(Query.equal("branch", branch));
+
+    const employees = await fetchAllDocuments(db, EMPLOYEES_COL, empQuery);
+    // console.log("Found employees: " + employees);
+
+    //  console.log("Target map: " + JSON.stringify(targetMap, null, 2));
+    const names = employees.map((e) => e.name);
+
+    const bookings = await fetchAllDocuments(db, BOOKINGS_COL, [
+      Query.equal("salesHandleName", names),
+      Query.greaterThanEqual("bookedDate", startDate),
+      Query.lessThanEqual("bookedDate", endDate),
+      Query.equal("bookingCancelled", false),
+      Query.select([
+        "status",
+        "destination",
+        "salesHandleName",
+        "adults",
+        "children",
+      ]),
+    ]);
+
+    const countryMapping = {};
+    const countryAssigneeMapping = {};
+    const countryTravelerMapping = {};
+    const countryAssigneeTravelerMapping = {};
+    const dubaiMapping = ["Dubai", "DUBAI", "United Arab Emirates"];
+    const singaporeMapping = ["Singapore", "SINGAPORE", "SIN", "SG"];
+
+    bookings.forEach((req) => {
+      const countryNames = req.destination?.includes("&")
+        ? req.destination.split("&")
+        : req.destination.split(",");
+
+      if (countryNames && countryNames.length > 0) {
+        countryNames.forEach((country) => {
+          if (dubaiMapping.includes(country.trim())) {
+            country = "Dubai";
+          }
+
+          if (singaporeMapping.includes(country.trim())) {
+            country = "Singapore";
+          }
+
+          // compute travellers for this booking
+          const travellers =
+            (Number(req.adults) || 0) + (Number(req.children) || 0);
+
+          // total booking count
+          countryMapping[country] = (countryMapping[country] || 0) + 1;
+          // per-salesperson booking count
+          const assignee = req.salesHandleName || "Unknown";
+          countryAssigneeMapping[country] =
+            countryAssigneeMapping[country] || {};
+          countryAssigneeMapping[country][assignee] =
+            (countryAssigneeMapping[country][assignee] || 0) + 1;
+
+          // total travellers per country
+          countryTravelerMapping[country] =
+            (countryTravelerMapping[country] || 0) + travellers;
+          // per-salesperson travellers per country
+          countryAssigneeTravelerMapping[country] =
+            countryAssigneeTravelerMapping[country] || {};
+          countryAssigneeTravelerMapping[country][assignee] =
+            (countryAssigneeTravelerMapping[country][assignee] || 0) +
+            travellers;
+        });
+      }
+    });
+    // build array with per-country assignee maps and traveller counts
+    const allCountries = Object.entries(countryMapping).map(
+      ([name, count]) => ({
+        name,
+        count: Number(count) || 0,
+        assignees: countryAssigneeMapping[name] || {},
+        travelerCount: Number(countryTravelerMapping[name] || 0),
+        assigneeTravellers: countryAssigneeTravelerMapping[name] || {},
+      }),
+    );
+
+    // sort descending by count
+    allCountries.sort((a, b) => b.count - a.count);
+
+    const topN = 10;
+    const topCountries = allCountries.slice(0, topN);
+    const rest = allCountries.slice(topN);
+    if (rest.length > 0) {
+      const othersCount = rest.reduce((sum, c) => sum + (c.count || 0), 0);
+      // merge assignees across rest into one map for "Others" (bookings and travellers)
+      const othersAssignees = {};
+      const othersAssigneeTravellers = {};
+      const othersTravellerSum = rest.reduce(
+        (sum, c) => sum + (c.travelerCount || 0),
+        0,
+      );
+
+      rest.forEach((c) => {
+        const map = c.assignees || {};
+        Object.entries(map).forEach(([assignee, cnt]) => {
+          othersAssignees[assignee] =
+            (othersAssignees[assignee] || 0) + (cnt || 0);
+        });
+        const tmap = c.assigneeTravellers || {};
+        Object.entries(tmap).forEach(([assignee, cnt]) => {
+          othersAssigneeTravellers[assignee] =
+            (othersAssigneeTravellers[assignee] || 0) + (cnt || 0);
+        });
+      });
+
+      if (othersCount > 0) {
+        topCountries.push({
+          name: "Others",
+          count: othersCount,
+          assignees: othersAssignees,
+          travelerCount: othersTravellerSum,
+          assigneeTravellers: othersAssigneeTravellers,
+        });
+      }
+    }
+
+     console.log("Result: " + JSON.stringify(topCountries, null, 2));
+
+    return {
+      topCountries: [...topCountries],
+    };
+  } catch (error) {
+    console.log("Error in handleLeaderboard: " + error);
+    return {
+      error: true,
+      topCountries: [],
+    };
+  }
+}
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const HANDLERS = {
   leaderboard: handleLeaderboard,
+  countryWise: handleCountryWise,
   // Register new pages here as you build them
 };
 
@@ -197,12 +360,14 @@ export default async ({ req, res, log, error }) => {
   }
 };
 
-
 // const start = async (body) => {
+//   console.log("body", body);
 //   const { type, payload } = body;
 
 //   if (!type || !HANDLERS[type]) {
-//     return { error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` };
+//     return {
+//       error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}`,
+//     };
 //   }
 
 //   const client = new Client()
@@ -222,11 +387,25 @@ export default async ({ req, res, log, error }) => {
 //   }
 // };
 
+// const result = await start({
+//   type: "countryWise",
+//   payload: {
+//     branch: "",
+//     startDate:new Date('Sun Feb 01 2026 00:00:00 GMT+0530 (India Standard Time)'),
+//     endDate:new Date('Sun Feb 28 2026 23:59:59 GMT+0530 (India Standard Time)'),
+//   },
+// });
+// const result = await start({
+//   type: "leaderboard",
+//   payload: {
+//     branch: "",
+//     year: 2026,
+//     quarter: "Q4",
+//     monthFrom: 1,
+//     monthTo: 3,
+//     targetYear: "2025",
+//     accesskey: "travel",
+//   },
+// });
 
-// const result = await start({type:'leaderboard', payload:{
-//    branch: "", year: 2026, quarter: 'Q4', monthFrom: 1, monthTo: 3, targetYear:'2025',accesskey:'travel'
-// }})
-
-
-// console.log('result', result)
-
+// console.log("result", result);
