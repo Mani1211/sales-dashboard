@@ -91,12 +91,13 @@ async function handleLeaderboard(db, payload) {
     "handleLeaderboard called with payload: " + JSON.stringify(payload),
   );
   try {
-    const { branch, year, quarter, monthFrom, monthTo, targetYear, accesskey } =
+    const { branch, year, quarter, monthFrom, monthTo, targetYear, accesskey, topPerformer } =
       payload;
 
+      const  designation = topPerformer ? DESIGNATIONS.filter(d=>d!=='CEO') : DESIGNATIONS;
     const empQuery = [
       Query.select(["name", "$id", "targets"]),
-      Query.contains("designation", DESIGNATIONS),
+      Query.contains("designation", designation),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
