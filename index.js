@@ -328,36 +328,36 @@ const HANDLERS = {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-// export default async ({ req, res, log, error }) => {
-//    log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
-//   log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
-//   log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
-//   log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
-//   log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
-//   log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
-//   const { type, payload } = req.body;
-//   log("Received request:", { type, payload });
+export default async ({ req, res, log, error }) => {
+   log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
+  log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
+  log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
+  log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
+  log("EMPLOYEE:    " + process.env.VITE_APPWRITE_EMPLOYEE_COLLECTION_ID);
+  log("BOOKING:    " + process.env.VITE_APPWRITE_BOOKING_COLLECTION_ID);
+  const { type, payload } = req.body;
+  log("Received request:", { type, payload });
 
-//   if (!type || !HANDLERS[type]) {
-//     return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
-//   }
+  if (!type || !HANDLERS[type]) {
+    return res.json({ error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}` }, 400);
+  }
 
-//   const client = new Client()
-//     .setEndpoint(process.env.VITE_APPWRITE_URL)
-//     .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
-//     .setKey(process.env.API_KEY);
+  const client = new Client()
+    .setEndpoint(process.env.VITE_APPWRITE_URL)
+    .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
+    .setKey(process.env.API_KEY);
 
-//   const db = new Databases(client);
+  const db = new Databases(client);
 
-//   try {
-//     log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
-//     const data = await HANDLERS[type](db, payload);
-//     return res.json({ success: true, data });
-//   } catch (err) {
-//     error(`[analytics] type=${type} failed: ${err.message}`);
-//     return res.json({ success: false, error: err.message }, 500);
-//   }
-// };
+  try {
+    log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+    const data = await HANDLERS[type](db, payload);
+    return res.json({ success: true, data });
+  } catch (err) {
+    error(`[analytics] type=${type} failed: ${err.message}`);
+    return res.json({ success: false, error: err.message }, 500);
+  }
+};
 
 // const start = async (body) => {
 //   console.log("body", body);
