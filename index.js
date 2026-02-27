@@ -365,10 +365,21 @@ async function sendWelcomeMessage(db, payload) {
       redirect: "follow"
     };
 
-    fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions)
-      .then((response) => response.text())
-      .then((result) => console.log(result))
-      .catch((error) => console.error('error', error));
+  try {
+    const res =  fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions)
+    const result = await res.text();
+    return {
+      success: true,
+      response: result
+    }
+    
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+   console.log("Welcome message response:", result);
   }
 // ─── Router ───────────────────────────────────────────────────────────────────
 
