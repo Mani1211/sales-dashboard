@@ -379,7 +379,6 @@ async function sendWelcomeMessage(db, payload) {
       error: error.message
     }
   }
-   console.log("Welcome message response:", result);
   }
 // ─── Router ───────────────────────────────────────────────────────────────────
 
