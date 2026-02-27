@@ -318,11 +318,64 @@ async function handleCountryWise(db, payload) {
   }
 }
 
+
+async function sendWelcomeMessage(db, payload) {
+  console.log('payload', payload)
+    const myHeaders = new Headers();
+    myHeaders.append("apiSecret", process.env.GALLABOX_API_SECRET);
+    myHeaders.append("apiKey", process.env.GALLABOX_API_KEY);
+    myHeaders.append("Content-Type", "application/json");
+    const raw = JSON.stringify({
+      "channelId": process.env.GALLABOX_WELCOME_CHANNEL_ID,
+      "channelType": "whatsapp",
+      "recipient": {
+        "name": payload.name,
+        "phone": payload.phone
+      },
+      "whatsapp": {
+        "type": "template",
+        "template": {
+          "templateName": "welcome_user",
+          "buttonValues": [
+            {
+              "index": 0,
+              "sub_type": "quick_reply",
+              "parameters": {
+                "type": "payload",
+                "payload": "Get Free Consultation"
+              }
+            },
+            {
+              "index": 1,
+              "sub_type": "COPY_CODE",
+              "parameters": {
+                "type": "coupon_code",
+                "coupon_code": "FLAT1000"
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const requestOptions = {
+      method: "POST",
+      headers: myHeaders,
+      body: raw,
+      redirect: "follow"
+    };
+
+    fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions)
+      .then((response) => response.text())
+      .then((result) => console.log(result))
+      .catch((error) => console.error('error', error));
+  }
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const HANDLERS = {
   leaderboard: handleLeaderboard,
   countryWise: handleCountryWise,
+  welcomeMessage:sendWelcomeMessage
   // Register new pages here as you build them
 };
 
@@ -360,8 +413,9 @@ export default async ({ req, res, log, error }) => {
 };
 
 // const start = async (body) => {
-//   console.log("body", body);
+//   // console.log("body", body);
 //   const { type, payload } = body;
+//   console.log('payload', payload)
 
 //   if (!type || !HANDLERS[type]) {
 //     return {
@@ -377,15 +431,22 @@ export default async ({ req, res, log, error }) => {
 //   const db = new Databases(client);
 
 //   try {
-//     console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+//     // console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
 //     const data = await HANDLERS[type](db, payload);
 //     return { success: true, data };
 //   } catch (err) {
-//     console.log(`[analytics] type=${type} failed: ${err.message}`);
+//     // console.log(`[analytics] type=${type} failed: ${err.message}`);
 //     return { success: false, error: err.message };
 //   }
 // };
 
+// const result = await start({
+//   type: "welcomeMessage",
+//   payload: {
+//     name: "Test Vicky",
+//     phone:'916383756188'
+//   },
+// });
 // const result = await start({
 //   type: "countryWise",
 //   payload: {
