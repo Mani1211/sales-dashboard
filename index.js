@@ -366,18 +366,29 @@ async function sendWelcomeMessage(db, payload) {
     };
 
   try {
-    const res =  fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions)
-    const result = await res.text();
+    // await the fetch call so `res` is a Response, not a Promise
+    const res = await fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions);
+    const resultText = await res.text();
+
+    // handle non-2xx responses explicitly
+    if (!res.ok) {
+      return {
+        success: false,
+        status: res.status,
+        response: resultText,
+      };
+    }
+
     return {
       success: true,
-      response: result
-    }
-    
+      response: resultText,
+    };
+
   } catch (error) {
     return {
       success: false,
-      error: error.message
-    }
+      error: error.message,
+    };
   }
   }
 // ─── Router ───────────────────────────────────────────────────────────────────
