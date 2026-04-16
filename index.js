@@ -98,7 +98,7 @@ async function handleLeaderboard(db, payload) {
     const empQuery = [
       Query.select(["name", "$id", "targets"]),
       Query.contains("designation", designation),
-      Query.equal("isActive", true),
+      // Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -186,7 +186,7 @@ async function handleCountryWise(db, payload) {
     const empQuery = [
       Query.select(["name", "$id"]),
       Query.contains("designation", DESIGNATIONS),
-      Query.equal("isActive", true),
+      // Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
