@@ -94,10 +94,11 @@ async function handleLeaderboard(db, payload) {
     const { branch, year, quarter, monthFrom, monthTo, targetYear, accesskey, topPerformer } =
       payload;
 
-      const  designation = topPerformer ? DESIGNATIONS.filter(d=>d!=='CEO') : DESIGNATIONS;
+    const designation = topPerformer ? DESIGNATIONS.filter(d => d !== 'CEO') : DESIGNATIONS;
     const empQuery = [
       Query.select(["name", "$id", "targets"]),
       Query.contains("designation", designation),
+      Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -185,6 +186,7 @@ async function handleCountryWise(db, payload) {
     const empQuery = [
       Query.select(["name", "$id"]),
       Query.contains("designation", DESIGNATIONS),
+      Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -204,7 +206,7 @@ async function handleCountryWise(db, payload) {
         "destination",
         "salesHandleName",
         "adults",
-        "children",'countries'
+        "children", 'countries'
       ]),
     ]);
 
@@ -304,7 +306,7 @@ async function handleCountryWise(db, payload) {
       }
     }
 
-     console.log("Result: " + JSON.stringify(topCountries, null, 2));
+    console.log("Result: " + JSON.stringify(topCountries, null, 2));
 
     return {
       topCountries: [...topCountries],
@@ -321,54 +323,56 @@ async function handleCountryWise(db, payload) {
 
 async function sendWelcomeMessage(db, payload) {
   console.log('payload', payload)
-    const myHeaders = new Headers();
-    myHeaders.append("apiSecret", process.env.GALLABOX_API_SECRET);
-    myHeaders.append("apiKey", process.env.GALLABOX_API_KEY);
-    myHeaders.append("Content-Type", "application/json");
-    const raw = JSON.stringify({
-      "channelId": process.env.GALLABOX_WELCOME_CHANNEL_ID,
-      "channelType": "whatsapp",
-      "recipient": {
-        "name": payload.name,
-        "phone": payload.phone
-      },
-      "whatsapp": {
-        "type": "template",
-        "template": {
-          "templateName": "welcome_user",
-          "buttonValues": [
-            {
-              "index": 0,
-              "sub_type": "quick_reply",
-              "parameters": {
-                "type": "payload",
-                "payload": "Get Free Consultation"
-              }
-            },
-            {
-              "index": 1,
-              "sub_type": "COPY_CODE",
-              "parameters": {
-                "type": "coupon_code",
-                "coupon_code": "FLAT1000"
-              }
+  const myHeaders = new Headers();
+  myHeaders.append("apiSecret", process.env.GALLABOX_API_SECRET);
+  myHeaders.append("apiKey", process.env.GALLABOX_API_KEY);
+  myHeaders.append("Content-Type", "application/json");
+  const raw = JSON.stringify({
+    "channelId": process.env.GALLABOX_WELCOME_CHANNEL_ID,
+    "channelType": "whatsapp",
+    "recipient": {
+      "name": payload.name,
+      "phone": payload.phone
+    },
+    "whatsapp": {
+      "type": "template",
+      "template": {
+        "templateName": "welcome_user",
+        "buttonValues": [
+          {
+            "index": 0,
+            "sub_type": "quick_reply",
+            "parameters": {
+              "type": "payload",
+              "payload": "Get Free Consultation"
             }
-          ]
-        }
+          },
+          {
+            "index": 1,
+            "sub_type": "COPY_CODE",
+            "parameters": {
+              "type": "coupon_code",
+              "coupon_code": "FLAT1000"
+            }
+          }
+        ]
       }
-    });
+    }
+  });
 
-    const requestOptions = {
-      method: "POST",
-      headers: myHeaders,
-      body: raw,
-      redirect: "follow"
-    };
+  const requestOptions = {
+    method: "POST",
+    headers: myHeaders,
+    body: raw,
+    redirect: "follow"
+  };
 
   try {
     // await the fetch call so `res` is a Response, not a Promise
     const res = await fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions);
+    // console.log('res', res)
     const resultText = await res.text();
+    console.log('resultText', resultText)
 
     // handle non-2xx responses explicitly
     if (!res.ok) {
@@ -390,20 +394,20 @@ async function sendWelcomeMessage(db, payload) {
       error: error.message,
     };
   }
-  }
+}
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const HANDLERS = {
   leaderboard: handleLeaderboard,
   countryWise: handleCountryWise,
-  welcomeMessage:sendWelcomeMessage
+  welcomeMessage: sendWelcomeMessage
   // Register new pages here as you build them
 };
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export default async ({ req, res, log, error }) => {
-   log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
+  log("ENDPOINT: " + process.env.VITE_APPWRITE_URL);
   log("PROJECT:  " + process.env.VITE_APPWRITE_PROJECT_ID);
   log("KEY SET:  " + !!process.env.API_KEY); // logs true/false, never logs the key itself
   log("DB_ID:    " + process.env.VITE_APPWRITE_DATABASE_ID);
@@ -433,39 +437,39 @@ export default async ({ req, res, log, error }) => {
   }
 };
 
-// const start = async (body) => {
-//   // console.log("body", body);
-//   const { type, payload } = body;
-//   console.log('payload', payload)
+const start = async (body) => {
+  // console.log("body", body);
+  const { type, payload } = body;
+  console.log('payload', payload)
 
-//   if (!type || !HANDLERS[type]) {
-//     return {
-//       error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}`,
-//     };
-//   }
+  if (!type || !HANDLERS[type]) {
+    return {
+      error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}`,
+    };
+  }
 
-//   const client = new Client()
-//     .setEndpoint(process.env.VITE_APPWRITE_URL)
-//     .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
-//     .setKey(process.env.API_KEY);
+  const client = new Client()
+    .setEndpoint(process.env.VITE_APPWRITE_URL)
+    .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
+    .setKey(process.env.API_KEY);
 
-//   const db = new Databases(client);
+  const db = new Databases(client);
 
-//   try {
-//     // console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
-//     const data = await HANDLERS[type](db, payload);
-//     return { success: true, data };
-//   } catch (err) {
-//     // console.log(`[analytics] type=${type} failed: ${err.message}`);
-//     return { success: false, error: err.message };
-//   }
-// };
+  try {
+    // console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+    const data = await HANDLERS[type](db, payload);
+    return { success: true, data };
+  } catch (err) {
+    // console.log(`[analytics] type=${type} failed: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+};
 
 // const result = await start({
 //   type: "welcomeMessage",
 //   payload: {
-//     name: "Test Vicky",
-//     phone:'916383756188'
+//     name: "Test ",
+//     phone:'919944883033'
 //   },
 // });
 // const result = await start({
@@ -476,17 +480,17 @@ export default async ({ req, res, log, error }) => {
 //     endDate:new Date('Sun Feb 28 2026 23:59:59 GMT+0530 (India Standard Time)'),
 //   },
 // });
-// const result = await start({
-//   type: "leaderboard",
-//   payload: {
-//     branch: "",
-//     year: 2026,
-//     quarter: "Q4",
-//     monthFrom: 1,
-//     monthTo: 3,
-//     targetYear: "2025",
-//     accesskey: "travel",
-//   },
-// });
+const result = await start({
+  type: "leaderboard",
+  payload: {
+    branch: "",
+    year: 2026,
+    quarter: "Q4",
+    monthFrom: 1,
+    monthTo: 3,
+    targetYear: "2025",
+    accesskey: "booked",
+  },
+});
 
-// console.log("result", result);
+console.log("result", result);
