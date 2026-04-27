@@ -98,7 +98,6 @@ async function handleLeaderboard(db, payload) {
     const empQuery = [
       Query.select(["name", "$id", "targets"]),
       Query.contains("designation", designation),
-      // Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -186,7 +185,6 @@ async function handleCountryWise(db, payload) {
     const empQuery = [
       Query.select(["name", "$id"]),
       Query.contains("designation", DESIGNATIONS),
-      // Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -370,9 +368,7 @@ async function sendWelcomeMessage(db, payload) {
   try {
     // await the fetch call so `res` is a Response, not a Promise
     const res = await fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions);
-    // console.log('res', res)
     const resultText = await res.text();
-    console.log('resultText', resultText)
 
     // handle non-2xx responses explicitly
     if (!res.ok) {
@@ -437,39 +433,39 @@ export default async ({ req, res, log, error }) => {
   }
 };
 
-const start = async (body) => {
-  // console.log("body", body);
-  const { type, payload } = body;
-  console.log('payload', payload)
+// const start = async (body) => {
+//   // console.log("body", body);
+//   const { type, payload } = body;
+//   console.log('payload', payload)
 
-  if (!type || !HANDLERS[type]) {
-    return {
-      error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}`,
-    };
-  }
+//   if (!type || !HANDLERS[type]) {
+//     return {
+//       error: `Unknown type "${type}". Valid types: ${Object.keys(HANDLERS).join(", ")}`,
+//     };
+//   }
 
-  const client = new Client()
-    .setEndpoint(process.env.VITE_APPWRITE_URL)
-    .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
-    .setKey(process.env.API_KEY);
+//   const client = new Client()
+//     .setEndpoint(process.env.VITE_APPWRITE_URL)
+//     .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
+//     .setKey(process.env.API_KEY);
 
-  const db = new Databases(client);
+//   const db = new Databases(client);
 
-  try {
-    // console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
-    const data = await HANDLERS[type](db, payload);
-    return { success: true, data };
-  } catch (err) {
-    // console.log(`[analytics] type=${type} failed: ${err.message}`);
-    return { success: false, error: err.message };
-  }
-};
+//   try {
+//     // console.log(`[analytics] type=${type} payload=${JSON.stringify(payload)}`);
+//     const data = await HANDLERS[type](db, payload);
+//     return { success: true, data };
+//   } catch (err) {
+//     // console.log(`[analytics] type=${type} failed: ${err.message}`);
+//     return { success: false, error: err.message };
+//   }
+// };
 
 // const result = await start({
 //   type: "welcomeMessage",
 //   payload: {
-//     name: "Test ",
-//     phone:'919944883033'
+//     name: "Test Vicky",
+//     phone:'916383756188'
 //   },
 // });
 // const result = await start({
@@ -480,17 +476,17 @@ const start = async (body) => {
 //     endDate:new Date('Sun Feb 28 2026 23:59:59 GMT+0530 (India Standard Time)'),
 //   },
 // });
-const result = await start({
-  type: "leaderboard",
-  payload: {
-    branch: "",
-    year: 2026,
-    quarter: "Q4",
-    monthFrom: 1,
-    monthTo: 3,
-    targetYear: "2025",
-    accesskey: "booked",
-  },
-});
+// const result = await start({
+//   type: "leaderboard",
+//   payload: {
+//     branch: "",
+//     year: 2026,
+//     quarter: "Q4",
+//     monthFrom: 1,
+//     monthTo: 3,
+//     targetYear: "2025",
+//     accesskey: "travel",
+//   },
+// });
 
-console.log("result", result);
+// console.log("result", result);
