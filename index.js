@@ -1,5 +1,5 @@
 // functions/analytics/src/main.js
-import { Client, Databases, Query } from "node-appwrite";
+import { Client, Databases, Query, Users } from "node-appwrite";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -98,6 +98,7 @@ async function handleLeaderboard(db, payload) {
     const empQuery = [
       Query.select(["name", "$id", "targets"]),
       Query.contains("designation", designation),
+      Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -185,6 +186,7 @@ async function handleCountryWise(db, payload) {
     const empQuery = [
       Query.select(["name", "$id"]),
       Query.contains("designation", DESIGNATIONS),
+      Query.equal("isActive", true),
     ];
     if (branch) empQuery.push(Query.equal("branch", branch));
 
@@ -319,6 +321,53 @@ async function handleCountryWise(db, payload) {
 }
 
 
+/**
+ * payload: { search?: string, limit?: number, offset?: number }
+ * returns: { total: number, users: AuthUser[] }
+ * NOTE: API_KEY must include the `users.read` scope.
+ */
+async function handleUsers(_db, payload) {
+  try {
+    const { search = "", limit = 10, offset = 0 } = payload || {};
+
+    const client = new Client()
+      .setEndpoint(process.env.VITE_APPWRITE_URL)
+      .setProject(process.env.VITE_APPWRITE_PROJECT_ID)
+      .setKey(process.env.API_KEY);
+
+    const users = new Users(client);
+
+    const queries = [
+      Query.limit(limit),
+      Query.offset(offset),
+      Query.orderDesc("$createdAt"),
+    ];
+
+    // 2nd arg = fuzzy search across name / email / phone / id
+    const result = await users.list(queries, search ? search.trim() : undefined);
+
+    return {
+      total: result.total,
+      users: result.users.map((u) => ({
+        $id: u.$id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        registration: u.registration, // account created
+        accessedAt: u.accessedAt,     // last activity / last login
+        status: u.status,
+        emailVerification: u.emailVerification,
+        phoneVerification: u.phoneVerification,
+        labels: u.labels,
+      })),
+    };
+  } catch (error) {
+    console.log("Error in handleUsers: " + error);
+    return { error: true, total: 0, users: [] };
+  }
+}
+
+
 async function sendWelcomeMessage(db, payload) {
   console.log('payload', payload)
   const myHeaders = new Headers();
@@ -368,7 +417,9 @@ async function sendWelcomeMessage(db, payload) {
   try {
     // await the fetch call so `res` is a Response, not a Promise
     const res = await fetch("https://server.gallabox.com/devapi/messages/whatsapp", requestOptions);
+    // console.log('res', res)
     const resultText = await res.text();
+    console.log('resultText', resultText)
 
     // handle non-2xx responses explicitly
     if (!res.ok) {
@@ -396,7 +447,8 @@ async function sendWelcomeMessage(db, payload) {
 const HANDLERS = {
   leaderboard: handleLeaderboard,
   countryWise: handleCountryWise,
-  welcomeMessage: sendWelcomeMessage
+  welcomeMessage: sendWelcomeMessage,
+  users: handleUsers,
   // Register new pages here as you build them
 };
 
@@ -464,8 +516,8 @@ export default async ({ req, res, log, error }) => {
 // const result = await start({
 //   type: "welcomeMessage",
 //   payload: {
-//     name: "Test Vicky",
-//     phone:'916383756188'
+//     name: "Test ",
+//     phone:'919944883033'
 //   },
 // });
 // const result = await start({
@@ -477,15 +529,9 @@ export default async ({ req, res, log, error }) => {
 //   },
 // });
 // const result = await start({
-//   type: "leaderboard",
+//   type: "users",
 //   payload: {
-//     branch: "",
-//     year: 2026,
-//     quarter: "Q4",
-//     monthFrom: 1,
-//     monthTo: 3,
-//     targetYear: "2025",
-//     accesskey: "travel",
+//     limit: 1, offset: 0
 //   },
 // });
 
